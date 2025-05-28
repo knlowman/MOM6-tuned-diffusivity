@@ -45,8 +45,10 @@ type, public :: diapyc_energy_tuning_CS ; private
 
   !< 4 values that define the coordinate potential density range over which a diffusivity scaled by
   !! Kd_add is added [R ~> kg m-3].
-!  real :: rho_v1, rho_v2, rho_v3, rho_v4
   real, dimension(4)  :: rho_range
+  real, dimension(4)  :: lat_range !! 4 values that define latitude range where Kd is enhanced [degLat].
+  real, dimension(4)  :: lon_range !! 4 values that define longitude range where Kd is enhanced [degLon].
+  logical :: use_abs_lat  !< If true, use the absolute value of latitude when setting lat_fn.
 
   !>@{ Diagnostic IDs
   integer :: id_EnKdTuned=-1,id_Kd_scaling=-1,id_Kd_int_added=-1,id_EnChangeTuned=-1,id_Kd_int_base=-1, &
@@ -305,6 +307,8 @@ subroutine tuning_get_added_diff(tv, G, GV, US, CS, Kd_int_added, Kd_lay_added, 
   real :: Rcv(SZI_(G),SZK_(G)) ! The coordinate density in layers [R ~> kg m-3].
   real :: p_ref(SZI_(G))       ! An array of tv%P_Ref pressures [R L2 T-2 ~> Pa].
   real :: rho_fn      ! The density dependence of the input function, 0-1 [nondim].
+  real :: lat_fn      ! The latitude dependence of the input function, 0-1 [nondim].
+  real :: lon_fn      ! The longitude dependence of the input function, 0-1 [nondim].
   logical :: use_EOS  ! If true, density is calculated from T & S using an
                       ! equation of state.
   integer, dimension(2) :: EOSdom ! The i-computational domain for the equation of state
@@ -348,15 +352,43 @@ subroutine tuning_get_added_diff(tv, G, GV, US, CS, Kd_int_added, Kd_lay_added, 
     
     do k=1,nz ; do i=is,ie
       rho_fn = val_weights(Rcv(i,k), CS%rho_range)
-      if (rho_fn > 0.0) then
-        Kd_lay_added(i,j,k) = CS%Kd_add * rho_fn
+      if (present(CS%lat_range))
+        if (CS%use_abs_lat) then
+          lat_fn = val_weights(abs(G%geoLatT(i,j)), CS%lat_range)
+        else
+          lat_fn = val_weights(G%geoLatT(i,j), CS%lat_range)
+        endif
+      else
+        lat_fn = 1.0
+      endif
+      if (present(CS%lon_range))
+        lon_fn = val_weights(G%geoLonT(i,j), CS%lon_range)
+      else
+        lon_fn = 1.0
+      endif
+      if (rho_fn * lat_fn * lon_fn > 0.0) then
+        Kd_lay_added(i,j,k) = CS%Kd_add * rho_fn * lat_fn * lon_fn
       endif
     enddo ; enddo
 
     do K=2,nz ; do i=is,ie
       rho_fn = val_weights( 0.5*(Rcv(i,k-1) + Rcv(i,k)), CS%rho_range)
-      if (rho_fn > 0.0) then
-        Kd_int_added(i,j,K) = CS%Kd_add * rho_fn
+      if (present(CS%lat_range))
+        if (CS%use_abs_lat) then
+          lat_fn = val_weights(abs(G%geoLatT(i,j)), CS%lat_range)
+        else
+          lat_fn = val_weights(G%geoLatT(i,j), CS%lat_range)
+        endif
+      else
+        lat_fn = 1.0
+      endif
+      if (present(CS%lon_range))
+        lon_fn = val_weights(G%geoLonT(i,j), CS%lon_range)
+      else
+        lon_fn = 1.0
+      endif
+      if (rho_fn * lat_fn * lon_fn > 0.0) then
+        Kd_int_added(i,j,K) = CS%Kd_add * rho_fn * lat_fn * lon_fn
       endif
     enddo ; enddo
   enddo
@@ -445,6 +477,14 @@ subroutine diapyc_energy_tuning_init(Time, G, GV, US, param_file, diag, CS)
                  units="kg m-3", default=-1.0e9, scale=US%kg_m3_to_R)
   call get_param(param_file, mdl, "TUNING_RHO_V4", CS%rho_range(4), &
                  units="kg m-3", default=-1.0e9, scale=US%kg_m3_to_R)
+  call get_param(param_file, mdl, "TUNING_LON_RANGE", CS%lon_range(:), &
+                 units="degree", default=-1.0e9)
+  call get_param(param_file, mdl, "TUNING_LAT_RANGE", CS%lat_range(:), &
+                 units="degree", default=-1.0e9)
+  call get_param(param_file, mdl, "TUNING_USE_ABS_LAT", CS%use_abs_lat, &
+                 "If true, use the absolute value of latitude when "//&
+                 "checking whether a point fits into range of latitudes.", &
+                 default=.false.)
 
   call get_param(param_file, mdl, "TUNE_KD_ADD", CS%Kd_add, &
                  "A user-specified guess for the amplitude of additional diffusivity over a range of "//&
@@ -452,6 +492,22 @@ subroutine diapyc_energy_tuning_init(Time, G, GV, US, param_file, diag, CS)
                  scale=US%m2_s_to_Z2_T)
   call get_param(param_file, mdl, "KD_POWER_CHANGE", CS%energy_target, &
                  "Target change in power associated with diapycnal mixing.", units="W")
+
+  if ( present(CS%lat_range) .and. (.not.range_OK(CS%lat_range)) ) then
+    write(mesg, '(4(1pe15.6))') CS%lat_range(1:4)
+    call MOM_error(FATAL, "diapyc_energy_tuning: bad latitude range: \n  "//&
+                    trim(mesg))
+  endif
+  if ( present(CS%lon_range) .and. (.not.range_OK(CS%lon_range)) ) then
+    write(mesg, '(4(1pe15.6))') CS%lon_range(1:4)
+    call MOM_error(FATAL, "diapyc_energy_tuning: bad longitude range: \n  "//&
+                    trim(mesg))
+  endif
+  if (.not.range_OK(CS%rho_range)) then
+    write(mesg, '(4(1pe15.6))') CS%rho_range(1:4)
+    call MOM_error(FATAL, "diapyc_energy_tuning: bad density range: \n  "//&
+                    trim(mesg))
+  endif
 
   CS%id_EnKdTuned = register_diag_field('ocean_model', 'energy_Kd_tuned', diag%axesT1, Time, &
                  "Column-integrated rate of energy consumption by diapycnal mixing after tuning (base + added Kd).", units="W m-2", &
