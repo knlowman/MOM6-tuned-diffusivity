@@ -20,8 +20,7 @@ use MOM_string_functions,   only : uppercase, lowercase
 use MOM_diapyc_energy_req,  only: diapyc_energy_req_calc, diapyc_energy_req_CS
 use MOM_diapyc_energy_req,  only: diapyc_energy_req_init, diapyc_energy_req_end
 
-! I suspect it's already loaded automatically
-! use time_manager_mod, only: length_of_year
+use time_manager_mod, only: length_of_year
 
 implicit none ; private
 
@@ -155,7 +154,7 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
   ! in case of former need to somehow get Time_init
   elapsed_years = CS%Time // length_of_year()
 
-  if (present(CS%ramp_time)) then
+  if (associated(CS%ramp_time)) then
     if (elapsed_years < CS%ramp_time) then
       global_target = CS%energy_target * (elapsed_years/CS%ramp_time)
     else
@@ -376,7 +375,7 @@ subroutine tuning_get_added_diff(tv, G, GV, US, CS, Kd_int_added, Kd_lay_added, 
     
     do k=1,nz ; do i=is,ie
       rho_fn = val_weights(Rcv(i,k), CS%rho_range)
-      if (present(CS%lat_range)) then
+      if (associated(CS%lat_range)) then
         if (CS%use_abs_lat) then
           lat_fn = val_weights(abs(G%geoLatT(i,j)), CS%lat_range)
         else
@@ -385,7 +384,7 @@ subroutine tuning_get_added_diff(tv, G, GV, US, CS, Kd_int_added, Kd_lay_added, 
       else
         lat_fn = 1.0
       endif
-      if (present(CS%lon_range)) then
+      if (associated(CS%lon_range)) then
         lon_fn = val_weights(G%geoLonT(i,j), CS%lon_range)
       else
         lon_fn = 1.0
@@ -397,7 +396,7 @@ subroutine tuning_get_added_diff(tv, G, GV, US, CS, Kd_int_added, Kd_lay_added, 
 
     do K=2,nz ; do i=is,ie
       rho_fn = val_weights( 0.5*(Rcv(i,k-1) + Rcv(i,k)), CS%rho_range)
-      if (present(CS%lat_range)) then
+      if (associated(CS%lat_range)) then
         if (CS%use_abs_lat) then
           lat_fn = val_weights(abs(G%geoLatT(i,j)), CS%lat_range)
         else
@@ -406,7 +405,7 @@ subroutine tuning_get_added_diff(tv, G, GV, US, CS, Kd_int_added, Kd_lay_added, 
       else
         lat_fn = 1.0
       endif
-      if (present(CS%lon_range)) then
+      if (associated(CS%lon_range)) then
         lon_fn = val_weights(G%geoLonT(i,j), CS%lon_range)
       else
         lon_fn = 1.0
@@ -520,12 +519,12 @@ subroutine diapyc_energy_tuning_init(Time, G, GV, US, param_file, diag, CS)
   call get_param(param_file, mdl, "TUNING_RAMP_YRS", CS%ramp_time, &
                  "Time period (in years) over which to linearly ramp up additional diapycnal mixing energy input.", units="years")
 
-  if ( present(CS%lat_range) .and. (.not.range_OK(CS%lat_range)) ) then
+  if (associated(CS%lat_range) .and. (.not.range_OK(CS%lat_range)) ) then
     write(mesg, '(4(1pe15.6))') CS%lat_range(1:4)
     call MOM_error(FATAL, "diapyc_energy_tuning: bad latitude range: \n  "//&
                     trim(mesg))
   endif
-  if ( present(CS%lon_range) .and. (.not.range_OK(CS%lon_range)) ) then
+  if (associated(CS%lon_range) .and. (.not.range_OK(CS%lon_range)) ) then
     write(mesg, '(4(1pe15.6))') CS%lon_range(1:4)
     call MOM_error(FATAL, "diapyc_energy_tuning: bad longitude range: \n  "//&
                     trim(mesg))
