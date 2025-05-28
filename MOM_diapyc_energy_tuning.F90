@@ -20,6 +20,9 @@ use MOM_string_functions,   only : uppercase, lowercase
 use MOM_diapyc_energy_req,  only: diapyc_energy_req_calc, diapyc_energy_req_CS
 use MOM_diapyc_energy_req,  only: diapyc_energy_req_init, diapyc_energy_req_end
 
+! I suspect it's already loaded automatically
+! use time_manager_mod, only: length_of_year
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -38,9 +41,13 @@ type, public :: diapyc_energy_tuning_CS ; private
   type(diag_ctrl), pointer :: diag => NULL() !< A structure that is used to
                                !! regulate the timing of diagnostic output.
 
+  type(time_type), pointer :: Time !< Pointer to model time (needed for ramping up added mixing energy)
+  
   real :: Kd_add        !< The scale of diffusivity that was added on the previous timestep [Z2 T-1 ~> m2 s-1].
   real :: energy_target !< Target change in global power requirements for diapycnal mixing [W].
 
+  real :: ramp_time !< Time period over which to linearly ramp up energy input [years].
+  
   character(len=20) :: Kd_prof  !< The name of the density-dependent diffusivity profile.
 
   !< 4 values that define the coordinate potential density range over which a diffusivity scaled by
@@ -104,13 +111,15 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
           intent(out)   :: Kd_lay_added !< Added layer diffusivity returned after tuning [Z2 T-1 ~> m2 s-1].
 
   ! Local variables
-  real :: energy_change  ! Global energy change for tuned added diffusity. [W]
+  real :: energy_change, global_target  ! Actual and target global energy change for tuned added diffusity. [W]
   real :: base_energy, tot_energy  ! Global energy required for base diffusivity and with added diffusivity [W].
   real :: energy_error, error_tol  ! Difference between desired and actual energy change and error tolerance [W].
   real :: Kd_lower, Kd_upper ! bounds to use for bisection method
   real :: PE_err_lower, PE_err_upper   ! Energy change error associated with Kd_lower and Kd_upper [W].
   integer :: num_iter, max_iter       ! Iteration counter and max number of allowed iterations.
 
+  real :: elapsed_years  ! Current year of the simulation.
+  
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: &
       energy_Kd ! 2D array of the column-integrated energy used by diapycnal mixing after tuning
                                           ! [R Z L2 T-3 ~> W m-2].
@@ -141,7 +150,22 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
 
   num_iter = 0
   max_iter = 200 ! set to 5 for debugging purposes
-  error_tol = CS%energy_target * 0.001 ! using 1% error tolerance but set to 20% for debugging
+
+  ! don't know if model time is equal to year or time since simulation began
+  ! in case of former need to somehow get Time_init
+  elapsed_years = CS%Time // length_of_year()
+
+  if (present(CS%ramp_time)) then
+    if (elapsed_years < CS%ramp_time) then
+      global_target = CS%energy_target * (elapsed_years/CS%ramp_time)
+    else
+      global_target = CS%energy_target
+    endif
+  else ! if ramp-up time not supplied, turn on at full-force immediately
+    global_target = CS%energy_target
+  endif
+
+  error_tol = global_target * 0.001 ! using 1% error tolerance but set to 20% for debugging
   Kd_lower = 0.0
   Kd_upper = 0.0
 
@@ -255,7 +279,7 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
 
      tot_energy = global_area_integral(energy_Kd, G, scale=US%RZ3_T3_to_W_m2*US%L_to_Z**2)
      energy_change = tot_energy - base_energy
-     energy_error = energy_change - CS%energy_target
+     energy_error = energy_change - global_target
 
 !     write (output_str, '(a, i3, a, es12.5, a, es12.5, a, es12.5)') 'Num iter: ', num_iter, '  New Kd_add: ', Kd_add_scaling, &
 !             '  Energy change: ', energy_change, '  Energy error: ', energy_error
@@ -352,7 +376,7 @@ subroutine tuning_get_added_diff(tv, G, GV, US, CS, Kd_int_added, Kd_lay_added, 
     
     do k=1,nz ; do i=is,ie
       rho_fn = val_weights(Rcv(i,k), CS%rho_range)
-      if (present(CS%lat_range))
+      if (present(CS%lat_range)) then
         if (CS%use_abs_lat) then
           lat_fn = val_weights(abs(G%geoLatT(i,j)), CS%lat_range)
         else
@@ -361,7 +385,7 @@ subroutine tuning_get_added_diff(tv, G, GV, US, CS, Kd_int_added, Kd_lay_added, 
       else
         lat_fn = 1.0
       endif
-      if (present(CS%lon_range))
+      if (present(CS%lon_range)) then
         lon_fn = val_weights(G%geoLonT(i,j), CS%lon_range)
       else
         lon_fn = 1.0
@@ -373,7 +397,7 @@ subroutine tuning_get_added_diff(tv, G, GV, US, CS, Kd_int_added, Kd_lay_added, 
 
     do K=2,nz ; do i=is,ie
       rho_fn = val_weights( 0.5*(Rcv(i,k-1) + Rcv(i,k)), CS%rho_range)
-      if (present(CS%lat_range))
+      if (present(CS%lat_range)) then
         if (CS%use_abs_lat) then
           lat_fn = val_weights(abs(G%geoLatT(i,j)), CS%lat_range)
         else
@@ -382,7 +406,7 @@ subroutine tuning_get_added_diff(tv, G, GV, US, CS, Kd_int_added, Kd_lay_added, 
       else
         lat_fn = 1.0
       endif
-      if (present(CS%lon_range))
+      if (present(CS%lon_range)) then
         lon_fn = val_weights(G%geoLonT(i,j), CS%lon_range)
       else
         lon_fn = 1.0
@@ -462,6 +486,7 @@ subroutine diapyc_energy_tuning_init(Time, G, GV, US, param_file, diag, CS)
 
   CS%initialized = .true.
   CS%diag => diag
+  CS%Time => Time !< added May 28
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mdl, version, "The following parameters are used for energy-tuning the added diffusivity.")
@@ -478,9 +503,9 @@ subroutine diapyc_energy_tuning_init(Time, G, GV, US, param_file, diag, CS)
   call get_param(param_file, mdl, "TUNING_RHO_V4", CS%rho_range(4), &
                  units="kg m-3", default=-1.0e9, scale=US%kg_m3_to_R)
   call get_param(param_file, mdl, "TUNING_LON_RANGE", CS%lon_range(:), &
-                 units="degree", default=-1.0e9)
+                 units="degree")
   call get_param(param_file, mdl, "TUNING_LAT_RANGE", CS%lat_range(:), &
-                 units="degree", default=-1.0e9)
+                 units="degree")
   call get_param(param_file, mdl, "TUNING_USE_ABS_LAT", CS%use_abs_lat, &
                  "If true, use the absolute value of latitude when "//&
                  "checking whether a point fits into range of latitudes.", &
@@ -492,6 +517,8 @@ subroutine diapyc_energy_tuning_init(Time, G, GV, US, param_file, diag, CS)
                  scale=US%m2_s_to_Z2_T)
   call get_param(param_file, mdl, "KD_POWER_CHANGE", CS%energy_target, &
                  "Target change in power associated with diapycnal mixing.", units="W")
+  call get_param(param_file, mdl, "TUNING_RAMP_YRS", CS%ramp_time, &
+                 "Time period (in years) over which to linearly ramp up additional diapycnal mixing energy input.", units="years")
 
   if ( present(CS%lat_range) .and. (.not.range_OK(CS%lat_range)) ) then
     write(mesg, '(4(1pe15.6))') CS%lat_range(1:4)
