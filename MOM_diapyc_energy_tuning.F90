@@ -14,13 +14,14 @@ use MOM_unit_scaling,       only : unit_scale_type
 use MOM_variables,          only : thermo_var_ptrs
 use MOM_verticalGrid,       only : verticalGrid_type
 use MOM_EOS,                only : calculate_specific_vol_derivs, calculate_density, EOS_domain
-use MOM_spatial_means,      only: global_area_integral
+use MOM_spatial_means,      only : global_area_integral
 use MOM_string_functions,   only : uppercase, lowercase
 
 use MOM_diapyc_energy_req,  only: diapyc_energy_req_calc, diapyc_energy_req_CS
 use MOM_diapyc_energy_req,  only: diapyc_energy_req_init, diapyc_energy_req_end
 
-use time_manager_mod, only: length_of_year
+use MOM_time_manager,       only : time_type, time_type_to_real, operator(//)
+use time_manager_mod,       only : length_of_year
 
 implicit none ; private
 
@@ -40,7 +41,7 @@ type, public :: diapyc_energy_tuning_CS ; private
   type(diag_ctrl), pointer :: diag => NULL() !< A structure that is used to
                                !! regulate the timing of diagnostic output.
 
-  type(time_type), pointer :: Time !< Pointer to model time (needed for ramping up added mixing energy)
+  type(time_type), pointer :: Time => NULL() !< Pointer to model time (needed for ramping up added mixing energy)
   
   real :: Kd_add        !< The scale of diffusivity that was added on the previous timestep [Z2 T-1 ~> m2 s-1].
   real :: energy_target !< Target change in global power requirements for diapycnal mixing [W].
@@ -148,13 +149,13 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
   if (showCallTree) call callTree_enter("Beginning diapyc_energy_tuning_calc()")
 
   num_iter = 0
-  max_iter = 200 ! set to 5 for debugging purposes
+  max_iter = 200
 
-  ! don't know if model time is equal to year or time since simulation began
-  ! in case of former need to somehow get Time_init
-  elapsed_years = CS%Time // length_of_year()
+  elapsed_years = time_type_to_real(CS%Time) / time_type_to_real(length_of_year())
+!  write (output_str, '(a, es12.5)') 'elapsed_years: ', elapsed_years
+!  call MOM_mesg(output_str)
 
-  if (associated(CS%ramp_time)) then
+  if (CS%ramp_time /= -1.0e9) then
     if (elapsed_years < CS%ramp_time) then
       global_target = CS%energy_target * (elapsed_years/CS%ramp_time)
     else
@@ -164,7 +165,7 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
     global_target = CS%energy_target
   endif
 
-  error_tol = global_target * 0.001 ! using 1% error tolerance but set to 20% for debugging
+  error_tol = global_target * 0.001 ! using 1% error tolerance
   Kd_lower = 0.0
   Kd_upper = 0.0
 
@@ -375,7 +376,7 @@ subroutine tuning_get_added_diff(tv, G, GV, US, CS, Kd_int_added, Kd_lay_added, 
     
     do k=1,nz ; do i=is,ie
       rho_fn = val_weights(Rcv(i,k), CS%rho_range)
-      if (associated(CS%lat_range)) then
+      if (any(CS%lat_range /= -1.0e9)) then
         if (CS%use_abs_lat) then
           lat_fn = val_weights(abs(G%geoLatT(i,j)), CS%lat_range)
         else
@@ -384,7 +385,7 @@ subroutine tuning_get_added_diff(tv, G, GV, US, CS, Kd_int_added, Kd_lay_added, 
       else
         lat_fn = 1.0
       endif
-      if (associated(CS%lon_range)) then
+      if (any(CS%lon_range /= -1.0e9)) then
         lon_fn = val_weights(G%geoLonT(i,j), CS%lon_range)
       else
         lon_fn = 1.0
@@ -396,7 +397,7 @@ subroutine tuning_get_added_diff(tv, G, GV, US, CS, Kd_int_added, Kd_lay_added, 
 
     do K=2,nz ; do i=is,ie
       rho_fn = val_weights( 0.5*(Rcv(i,k-1) + Rcv(i,k)), CS%rho_range)
-      if (associated(CS%lat_range)) then
+      if (any(CS%lat_range /= -1.0e9)) then
         if (CS%use_abs_lat) then
           lat_fn = val_weights(abs(G%geoLatT(i,j)), CS%lat_range)
         else
@@ -405,7 +406,7 @@ subroutine tuning_get_added_diff(tv, G, GV, US, CS, Kd_int_added, Kd_lay_added, 
       else
         lat_fn = 1.0
       endif
-      if (associated(CS%lon_range)) then
+      if (any(CS%lon_range /= -1.0e9)) then
         lon_fn = val_weights(G%geoLonT(i,j), CS%lon_range)
       else
         lon_fn = 1.0
@@ -461,7 +462,7 @@ end function val_weights
 
 !> Initialize parameters and allocate memory associated with the diapycnal energy requirement module.
 subroutine diapyc_energy_tuning_init(Time, G, GV, US, param_file, diag, CS)
-  type(time_type),            intent(in)    :: Time        !< model time
+  type(time_type), target,    intent(in)    :: Time        !< model time
   type(ocean_grid_type),      intent(in)    :: G           !< model grid structure
   type(verticalGrid_type),    intent(in)    :: GV          !< ocean vertical grid structure
   type(unit_scale_type),      intent(in)    :: US          !< A dimensional unit scaling type
@@ -502,9 +503,9 @@ subroutine diapyc_energy_tuning_init(Time, G, GV, US, param_file, diag, CS)
   call get_param(param_file, mdl, "TUNING_RHO_V4", CS%rho_range(4), &
                  units="kg m-3", default=-1.0e9, scale=US%kg_m3_to_R)
   call get_param(param_file, mdl, "TUNING_LON_RANGE", CS%lon_range(:), &
-                 units="degree")
+                 units="degree", default=-1.0e9)
   call get_param(param_file, mdl, "TUNING_LAT_RANGE", CS%lat_range(:), &
-                 units="degree")
+                 units="degree", default=-1.0e9)
   call get_param(param_file, mdl, "TUNING_USE_ABS_LAT", CS%use_abs_lat, &
                  "If true, use the absolute value of latitude when "//&
                  "checking whether a point fits into range of latitudes.", &
@@ -517,14 +518,15 @@ subroutine diapyc_energy_tuning_init(Time, G, GV, US, param_file, diag, CS)
   call get_param(param_file, mdl, "KD_POWER_CHANGE", CS%energy_target, &
                  "Target change in power associated with diapycnal mixing.", units="W")
   call get_param(param_file, mdl, "TUNING_RAMP_YRS", CS%ramp_time, &
-                 "Time period (in years) over which to linearly ramp up additional diapycnal mixing energy input.", units="years")
+                 "Time period (in years) over which to linearly ramp up additional diapycnal &
+                 mixing energy input.", units="years", default=-1.0e9)
 
-  if (associated(CS%lat_range) .and. (.not.range_OK(CS%lat_range)) ) then
+  if (any( CS%lat_range /= -1.0e9 ) .and. (.not.range_OK(CS%lat_range)) ) then
     write(mesg, '(4(1pe15.6))') CS%lat_range(1:4)
     call MOM_error(FATAL, "diapyc_energy_tuning: bad latitude range: \n  "//&
                     trim(mesg))
   endif
-  if (associated(CS%lon_range) .and. (.not.range_OK(CS%lon_range)) ) then
+  if (any( CS%lon_range /= -1.0e9 ) .and. (.not.range_OK(CS%lon_range)) ) then
     write(mesg, '(4(1pe15.6))') CS%lon_range(1:4)
     call MOM_error(FATAL, "diapyc_energy_tuning: bad longitude range: \n  "//&
                     trim(mesg))
