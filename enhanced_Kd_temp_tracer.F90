@@ -1,5 +1,5 @@
 !> A tracer package that mimics salinity
-module enhanced_Kd_heating_tracer
+module enhanced_Kd_temp_tracer
 
 ! This file is part of MOM6. See LICENSE.md for the license.
 
@@ -31,17 +31,17 @@ implicit none ; private
 
 #include <MOM_memory.h>
 
-public register_enhanced_Kd_heating_tracer, initialize_enhanced_Kd_heating_tracer
-public enhanced_Kd_heating_tracer_column_physics
-public enhanced_Kd_heating_tracer_end
+public register_enhanced_Kd_temp_tracer, initialize_enhanced_Kd_temp_tracer
+public enhanced_Kd_temp_tracer_column_physics
+public enhanced_Kd_temp_tracer_end
 
-!> The control structure for the pseudo-salt tracer
-type, public :: enhanced_Kd_heating_tracer_CS ; private
+!> The control structure for the diffusive temperature change tracer
+type, public :: enhanced_Kd_temp_tracer_CS ; private
   type(time_type), pointer :: Time => NULL() !< A pointer to the ocean model's clock.
   type(tracer_registry_type), pointer :: tr_Reg => NULL() !< A pointer to the MOM tracer registry
   real, pointer :: extra_dT(:,:,:) => NULL()   !< The array of diffusive heating tracer used in this
                                                !! subroutine [C]
-  logical :: enhanced_Kd_heating_may_reinit = .true. !< Hard coding since this should not matter
+  logical :: enhanced_Kd_temp_may_reinit = .true. !< Hard coding since this should not matter
 
   integer :: id_encd_Kd_tracer = -1   !< A diagnostic ID
 
@@ -50,17 +50,17 @@ type, public :: enhanced_Kd_heating_tracer_CS ; private
   type(MOM_restart_CS), pointer :: restart_CSp => NULL() !< A pointer to the restart control structure
 
   type(vardesc) :: tr_desc !< A description and metadata for the pseudo-salt tracer
-end type enhanced_Kd_heating_tracer_CS
+end type enhanced_Kd_temp_tracer_CS
 
 contains
 
 !> Register the pseudo-salt tracer with MOM6
-function register_enhanced_Kd_heating_tracer(HI, GV, param_file, CS, tr_Reg, restart_CS)
+function register_enhanced_Kd_temp_tracer(HI, GV, param_file, CS, tr_Reg, restart_CS)
   type(hor_index_type),       intent(in) :: HI   !< A horizontal index type structure
   type(verticalGrid_type),    intent(in) :: GV   !< The ocean's vertical grid structure
   type(param_file_type),      intent(in) :: param_file !< A structure to parse for run-time parameters
-  type(enhanced_Kd_heating_tracer_CS),  pointer  :: CS !< The control structure returned by a previous
-                                               !! call to register_enhanced_Kd_heating_tracer.
+  type(enhanced_Kd_temp_tracer_CS),  pointer  :: CS !< The control structure returned by a previous
+                                               !! call to register_enhanced_Kd_temp_tracer.
   type(tracer_registry_type), pointer    :: tr_Reg !< A pointer that is set to point to the control
                                                   !! structure for the tracer advection and
                                                   !! diffusion module
@@ -69,19 +69,19 @@ function register_enhanced_Kd_heating_tracer(HI, GV, param_file, CS, tr_Reg, res
 ! to be used with MOM.
 
   ! Local variables
-  character(len=40)  :: mdl = "enhanced_Kd_heating_tracer" ! This module's name.
+  character(len=40)  :: mdl = "enhanced_Kd_temp_tracer" ! This module's name.
   character(len=200) :: inputdir ! The directory where the input files are.
   character(len=48)  :: var_name ! The variable's name.
-  character(len=3)   :: name_tag ! String for creating identifying enhanced_Kd_heating
+  character(len=3)   :: name_tag ! String for creating identifying enhanced_Kd_temp
 ! This include declares and sets the variable "version".
 #include "version_variable.h"
   real, pointer :: tr_ptr(:,:,:) => NULL()
-  logical :: register_enhanced_Kd_heating_tracer
+  logical :: register_enhanced_Kd_temp_tracer
   integer :: isd, ied, jsd, jed, nz, i, j
   isd = HI%isd ; ied = HI%ied ; jsd = HI%jsd ; jed = HI%jed ; nz = GV%ke
 
   if (associated(CS)) then
-    call MOM_error(WARNING, "register_enhanced_Kd_heating_tracer called with an "// &
+    call MOM_error(WARNING, "register_enhanced_Kd_temp_tracer called with an "// &
                              "associated control structure.")
     return
   endif
@@ -92,25 +92,25 @@ function register_enhanced_Kd_heating_tracer(HI, GV, param_file, CS, tr_Reg, res
 
   allocate(CS%extra_dT(isd:ied,jsd:jed,nz)) ; CS%extra_dT(:,:,:) = 0.0
 
-  CS%tr_desc = var_desc(trim("enhanced_Kd_heating"), "degC", &
+  CS%tr_desc = var_desc(trim("enhanced_Kd_temp"), "degC", &
                      "Enhanced Kd temperature change passive tracer", caller=mdl)
 
   tr_ptr => CS%extra_dT(:,:,:)
-  call query_vardesc(CS%tr_desc, name=var_name, caller="register_enhanced_Kd_heating_tracer")
+  call query_vardesc(CS%tr_desc, name=var_name, caller="register_enhanced_Kd_temp_tracer")
   ! Register the tracer for horizontal advection, diffusion, and restarts.
-  call register_tracer(tr_ptr, tr_Reg, param_file, HI, GV, name="enhanced_Kd_heating", &
+  call register_tracer(tr_ptr, tr_Reg, param_file, HI, GV, name="enhanced_Kd_temp", &
                        longname="Enhanced Kd temperature change passive tracer", units="degC", &
                        registry_diags=.true., restart_CS=restart_CS, &
-                       mandatory=.not.CS%enhanced_Kd_heating_may_reinit)
+                       mandatory=.not.CS%enhanced_Kd_temp_may_reinit)
 
   CS%tr_Reg => tr_Reg
   CS%restart_CSp => restart_CS
-  register_enhanced_Kd_heating_tracer = .true.
+  register_enhanced_Kd_temp_tracer = .true.
 
-end function register_enhanced_Kd_heating_tracer
+end function register_enhanced_Kd_temp_tracer
 
 !> Initialize the pseudo-salt tracer
-subroutine initialize_enhanced_Kd_heating_tracer(restart, day, G, GV, h, diag, OBC, CS, &
+subroutine initialize_enhanced_Kd_temp_tracer(restart, day, G, GV, h, diag, OBC, CS, &
                                   sponge_CSp, tv)
   logical,                            intent(in) :: restart !< .true. if the fields have already
                                                          !! been read from a restart file.
@@ -124,8 +124,8 @@ subroutine initialize_enhanced_Kd_heating_tracer(restart, day, G, GV, h, diag, O
   type(ocean_OBC_type),               pointer    :: OBC  !< This open boundary condition type specifies
                                                          !! whether, where, and what open boundary
                                                          !! conditions are used.
-  type(enhanced_Kd_heating_tracer_CS),        pointer    :: CS !< The control structure returned by a previous
-                                                       !! call to register_enhanced_Kd_heating_tracer.
+  type(enhanced_Kd_temp_tracer_CS),        pointer    :: CS !< The control structure returned by a previous
+                                                       !! call to register_enhanced_Kd_temp_tracer.
   type(sponge_CS),                    pointer    :: sponge_CSp !< Pointer to the control structure for the sponges.
   type(thermo_var_ptrs),              intent(in) :: tv   !< A structure pointing to various thermodynamic variables
 !   This subroutine initializes the tracer fields in CS%extra_dT(:,:,:).
@@ -149,9 +149,9 @@ subroutine initialize_enhanced_Kd_heating_tracer(restart, day, G, GV, h, diag, O
 
   CS%Time => day
   CS%diag => diag
-  name = "enhanced_Kd_heating"
+  name = "enhanced_Kd_temp"
 
-  call query_vardesc(CS%tr_desc, name=name, caller="initialize_enhanced_Kd_heating_tracer")
+  call query_vardesc(CS%tr_desc, name=name, caller="initialize_enhanced_Kd_temp_tracer")
   if ((.not.restart) .or. (.not.query_initialized(CS%extra_dT, name, CS%restart_CSp))) then
     do k=1,nz ; do j=jsd,jed ; do i=isd,ied
       CS%extra_dT(i,j,k) = 0.0 !tv%S(i,j,k)
@@ -162,13 +162,13 @@ subroutine initialize_enhanced_Kd_heating_tracer(restart, day, G, GV, h, diag, O
   ! Steal from updated DOME in the fullness of time.
   endif
 
-  CS%id_encd_Kd_tracer = register_diag_field("ocean_model", "enhanced_Kd_heating_diff", CS%diag%axesTL, &
+  CS%id_encd_Kd_tracer = register_diag_field("ocean_model", "enhanced_Kd_temp_diff", CS%diag%axesTL, &
         day, "Temperature change due to enhanced diapycnal diffusivity.", "degC")
 
-end subroutine initialize_enhanced_Kd_heating_tracer
+end subroutine initialize_enhanced_Kd_temp_tracer
 
 !> Apply sources, sinks and diapycnal diffusion to the tracers in this package.
-subroutine enhanced_Kd_heating_tracer_column_physics(h_old, h_new, ea, eb, fluxes, dt, G, GV, US, CS, tv, debug, &
+subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, dt, G, GV, US, CS, tv, debug, &
               evap_CFL_limit, minimum_forcing_depth)
   type(ocean_grid_type),   intent(in) :: G    !< The ocean's grid structure
   type(verticalGrid_type), intent(in) :: GV   !< The ocean's vertical grid structure
@@ -188,8 +188,8 @@ subroutine enhanced_Kd_heating_tracer_column_physics(h_old, h_new, ea, eb, fluxe
                                               !! and tracer forcing fields.  Unused fields have NULL ptrs.
   real,                    intent(in) :: dt   !< The amount of time covered by this call [T ~> s]
   type(unit_scale_type),   intent(in) :: US   !< A dimensional unit scaling type
-  type(enhanced_Kd_heating_tracer_CS), pointer :: CS  !< The control structure returned by a previous
-                                              !! call to register_enhanced_Kd_heating_tracer.
+  type(enhanced_Kd_temp_tracer_CS), pointer :: CS  !< The control structure returned by a previous
+                                              !! call to register_enhanced_Kd_temp_tracer.
   type(thermo_var_ptrs),   intent(in) :: tv   !< A structure pointing to various thermodynamic variables
   logical,                 intent(in) :: debug !< If true calculate checksums
   real,          optional, intent(in) :: evap_CFL_limit !< Limit on the fraction of the water that can
@@ -216,7 +216,7 @@ subroutine enhanced_Kd_heating_tracer_column_physics(h_old, h_new, ea, eb, fluxe
 
 
 !  if (debug) then
-!    call hchksum(CS%extra_dT,"enhanced_Kd_heating pre pseudo-salt vertdiff", G%HI)
+!    call hchksum(CS%extra_dT,"enhanced_Kd_temp pre pseudo-salt vertdiff", G%HI)
 !  endif
 
   ! This uses applyTracerBoundaryFluxesInOut, usually in ALE mode
@@ -241,29 +241,29 @@ subroutine enhanced_Kd_heating_tracer_column_physics(h_old, h_new, ea, eb, fluxe
   enddo ; enddo ; enddo
 
 !  if (debug) then
-!    call hchksum(CS%extra_dT,"enhanced_Kd_heating post pseudo-salt vertdiff", G%HI)
+!    call hchksum(CS%extra_dT,"enhanced_Kd_temp post pseudo-salt vertdiff", G%HI)
 !  endif
 
   if (CS%encd_Kd_tracer>0) call post_data(CS%encd_Kd_tracer, CS%extra_dT, CS%diag)
 
-end subroutine enhanced_Kd_heating_tracer_column_physics
+end subroutine enhanced_Kd_temp_tracer_column_physics
 
 !> Deallocate memory associated with this tracer package
-subroutine enhanced_Kd_heating_tracer_end(CS)
-  type(enhanced_Kd_heating_tracer_CS), pointer :: CS !< The control structure returned by a previous
-                                              !! call to register_enhanced_Kd_heating_tracer.
+subroutine enhanced_Kd_temp_tracer_end(CS)
+  type(enhanced_Kd_temp_tracer_CS), pointer :: CS !< The control structure returned by a previous
+                                              !! call to register_enhanced_Kd_temp_tracer.
   integer :: m
 
   if (associated(CS)) then
     if (associated(CS%encd_Kd_tracer)) deallocate(CS%encd_Kd_tracer)
     deallocate(CS)
   endif
-end subroutine enhanced_Kd_heating_tracer_end
+end subroutine enhanced_Kd_temp_tracer_end
 
-!> \namespace enhanced_Kd_heating_tracer
+!> \namespace enhanced_Kd_temp_tracer
 !!
 !!  By Kiera Lowman, 2025
 !!
 !!  This file contains the routines necessary to model a passive
 
-end module enhanced_Kd_heating_tracer
+end module enhanced_Kd_temp_tracer
