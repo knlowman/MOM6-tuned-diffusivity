@@ -215,17 +215,13 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
   if (.not.associated(CS%diff)) return
 
 
-!  if (debug) then
-!    call hchksum(CS%extra_dT,"enhanced_Kd_temp pre pseudo-salt vertdiff", G%HI)
-!  endif
-
   ! This uses applyTracerBoundaryFluxesInOut, usually in ALE mode
   if (present(evap_CFL_limit) .and. present(minimum_forcing_depth)) then
     do k=1,nz ; do j=js,je ; do i=is,ie
       h_work(i,j,k) = h_old(i,j,k)
     enddo ; enddo ; enddo
     call applyTracerBoundaryFluxesInOut(G, GV, CS%extra_dT, dt, fluxes, h_work, &
-                                        evap_CFL_limit, minimum_forcing_depth, out_flux_optional=fluxes%netSalt)
+                                        evap_CFL_limit, minimum_forcing_depth)
     call tracer_vertdiff(h_work, ea, eb, dt, CS%extra_dT, G, GV)
   else
     call tracer_vertdiff(h_old, ea, eb, dt, CS%extra_dT, G, GV)
@@ -236,13 +232,8 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
     dTdz_2 = (tv%T(i,j,k)-tv%T(i,j,k-1))/(h_new(i,j,k)-h_new(i,j,k-1))
     num = tv%Kd_int_tuned(i,j,K+1)*dTdz_1 - tv%Kd_int_tuned(i,j,K)*dTdz_2
     denom = 0.5*((h_new(i,j,k+1)-h_new(i,j,k)) + (h_new(i,j,k)-h_new(i,j,k-1)))
-    dT = dt*num/denom
-    CS%diff(i,j,k) = CS%extra_dT(i,j,k)-tv%S(i,j,k)
+    CS%extra_dT(i,j,k) = CS%extra_dT(i,j,k) + dt*num/denom
   enddo ; enddo ; enddo
-
-!  if (debug) then
-!    call hchksum(CS%extra_dT,"enhanced_Kd_temp post pseudo-salt vertdiff", G%HI)
-!  endif
 
   if (CS%encd_Kd_tracer>0) call post_data(CS%encd_Kd_tracer, CS%extra_dT, CS%diag)
 
