@@ -214,34 +214,28 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
   if (.not.associated(CS)) return
-  !  if (.not.associated(CS%diff)) return ! do I need a line like this for CS%extra_dT
+  if (.not.associated(CS%extra_dT)) return
 
-  ! This uses applyTracerBoundaryFluxesInOut, usually in ALE mode
-  if (present(evap_CFL_limit) .and. present(minimum_forcing_depth)) then
-    do k=1,nz ; do j=js,je ; do i=is,ie
-      h_work(i,j,k) = h_old(i,j,k)
-    enddo ; enddo ; enddo
-    call applyTracerBoundaryFluxesInOut(G, GV, CS%extra_dT, dt, fluxes, h_work, &
-                                        evap_CFL_limit, minimum_forcing_depth)
-    call tracer_vertdiff(h_work, ea, eb, dt, CS%extra_dT, G, GV)
-  else
-    call tracer_vertdiff(h_old, ea, eb, dt, CS%extra_dT, G, GV)
-  endif
+  call tracer_vertdiff(h_old, ea, eb, dt, CS%extra_dT, G, GV)
 
-  do k=2,(nz-1) ; do j=js,je ; do i=is,ie
-!    if k=1 then
-!      dTdz = (tv%T(i,j,k+1)-tv%T(i,j,k))/(h_new(i,j,k+1)-h_new(i,j,k))
-!      num = tv%Kd_int_tuned(i,j,K+1)*dTdz
-!      denom = h_new(i,j,k+1)-h_new(i,j,k)
-!      CS%extra_dT(i,j,k) = CS%extra_dT(i,j,k) + dt*num/denom
-!    else if k=nz then
-!      dTdz = 
-
-    dTdz_1 = (tv%T(i,j,k+1)-tv%T(i,j,k))/(h_new(i,j,k+1)-h_new(i,j,k))
-    dTdz_2 = (tv%T(i,j,k)-tv%T(i,j,k-1))/(h_new(i,j,k)-h_new(i,j,k-1))
-    num = tv%Kd_int_tuned(i,j,K+1)*dTdz_1 - tv%Kd_int_tuned(i,j,K)*dTdz_2
-    denom = 0.5*((h_new(i,j,k+1)-h_new(i,j,k)) + (h_new(i,j,k)-h_new(i,j,k-1)))
-    CS%extra_dT(i,j,k) = CS%extra_dT(i,j,k) + dt*num/denom
+  do k=1,nz ; do j=js,je ; do i=is,ie
+    if (k==1) then
+      dTdz = (tv%T(i,j,k+1)-tv%T(i,j,k))/(0.5*(h_new(i,j,k+1)+h_new(i,j,k)))
+      num = tv%Kd_int_tuned(i,j,K+1)*dTdz - 0.0
+      denom = h_new(i,j,k)
+      CS%extra_dT(i,j,k) = CS%extra_dT(i,j,k) + dt*num/denom
+    else if (k==nz) then
+      dTdz = (tv%T(i,j,k)-tv%T(i,j,k-1))/(0.5*(h_new(i,j,k)+h_new(i,j,k-1)))
+      num = 0.0 - tv%Kd_int_tuned(i,j,K)*dTdz
+      denom = h_new(i,j,k)
+      CS%extra_dT(i,j,k) = CS%extra_dT(i,j,k) + dt*num/denom
+    else
+      dTdz_1 = (tv%T(i,j,k+1)-tv%T(i,j,k))/(0.5*(h_new(i,j,k+1)+h_new(i,j,k)))
+      dTdz_2 = (tv%T(i,j,k)-tv%T(i,j,k-1))/(0.5*(h_new(i,j,k)+h_new(i,j,k-1)))
+      num = tv%Kd_int_tuned(i,j,K+1)*dTdz_1 - tv%Kd_int_tuned(i,j,K)*dTdz_2
+      denom = h_new(i,j,k)
+      CS%extra_dT(i,j,k) = CS%extra_dT(i,j,k) + dt*num/denom
+    endif
   enddo ; enddo ; enddo
 
   if (CS%id_encd_Kd_tracer>0) call post_data(CS%id_encd_Kd_tracer, CS%extra_dT, CS%diag)

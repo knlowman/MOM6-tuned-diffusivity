@@ -261,7 +261,10 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
      Kd_lay(:,:,:) = Kd_lay_base(:,:,:)+Kd_lay_added(:,:,:)
      Kd_int(:,:,:) = Kd_int_base(:,:,:)+Kd_int_added(:,:,:)
 
-     tv%Kd_int_tuned(:,:,:) = Kd_int_tuned
+     if(.not.associated(tv%Kd_int_tuned)) then
+       allocate(tv%Kd_int_tuned(G%isd:G%ied,G%jsd:G%jed,GV%ke+1), source=0.0)
+     endif
+     tv%Kd_int_tuned(:,:,:) = Kd_int_added(:,:,:)
 
      energy_Kd(:,:) = 0.0
      
