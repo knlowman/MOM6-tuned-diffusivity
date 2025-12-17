@@ -142,7 +142,7 @@ subroutine initialize_enhanced_Kd_temp_tracer(restart, day, G, GV, h, diag, OBC,
   integer :: IsdB, IedB, JsdB, JedB
 
   if (.not.associated(CS)) return
-  if (.not.associated(CS%diff)) return
+  !  if (.not.associated(CS%diff)) return ! do I need a line like this for CS%extra_dT
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
@@ -209,13 +209,12 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
   integer :: secs, days
   integer :: i, j, k, is, ie, js, je, nz, k_max
   real, dimension(SZI_(G),SZJ_(G),SZK_(G)) :: h_work ! Used so that h can be modified
-  real :: dTdz, dTdz1, dTdz2, num, denom
+  real :: dTdz, dTdz_1, dTdz_2, num, denom
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
   if (.not.associated(CS)) return
-  if (.not.associated(CS%diff)) return
-
+  !  if (.not.associated(CS%diff)) return ! do I need a line like this for CS%extra_dT
 
   ! This uses applyTracerBoundaryFluxesInOut, usually in ALE mode
   if (present(evap_CFL_limit) .and. present(minimum_forcing_depth)) then
@@ -245,7 +244,7 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
     CS%extra_dT(i,j,k) = CS%extra_dT(i,j,k) + dt*num/denom
   enddo ; enddo ; enddo
 
-  if (CS%encd_Kd_tracer>0) call post_data(CS%encd_Kd_tracer, CS%extra_dT, CS%diag)
+  if (CS%id_encd_Kd_tracer>0) call post_data(CS%id_encd_Kd_tracer, CS%extra_dT, CS%diag)
 
 end subroutine enhanced_Kd_temp_tracer_column_physics
 
@@ -256,7 +255,7 @@ subroutine enhanced_Kd_temp_tracer_end(CS)
   integer :: m
 
   if (associated(CS)) then
-    if (associated(CS%encd_Kd_tracer)) deallocate(CS%encd_Kd_tracer)
+    if (associated(CS%id_encd_Kd_tracer)) deallocate(CS%id_encd_Kd_tracer)
     deallocate(CS)
   endif
 end subroutine enhanced_Kd_temp_tracer_end
