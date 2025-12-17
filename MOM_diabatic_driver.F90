@@ -1860,11 +1860,11 @@ subroutine layered_diabatic(u, v, h, tv, Hml, fluxes, visc, ADp, CDp, dt, Time_e
   if (CS%tune_energy_req) then
     call diapyc_energy_tuning_calc(h, dt, tv, G, GV, US, CS%diapyc_en_tun_CSp, T_f, S_f, Kd_int, Kd_int_base, Kd_int_tuned, &
       Kd_lay, Kd_lay_base, Kd_lay_tuned)
-    if (associated(tracer_flow_control_CSp)) then
-      if (associated(tracer_flow_control_CSp%enhanced_Kd_temp_tracer_CSp)) then
-        tracer_flow_control_CSp%enhanced_Kd_temp_tracer_CSp%Kd_int_tuned = Kd_int_tuned
-      end if
-    end if
+!    if (associated(CS%tracer_flow_control_CSp)) then
+!      if (associated(CS%tracer_flow_control_CSp%enhanced_Kd_temp_tracer_CSp)) then
+!        CS%tracer_flow_control_CSp%enhanced_Kd_temp_tracer_CSp%Kd_int_tuned = Kd_int_tuned
+!      end if
+!    end if
   endif
 
   if (CS%debug) then

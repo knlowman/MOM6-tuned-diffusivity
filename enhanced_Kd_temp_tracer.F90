@@ -92,7 +92,6 @@ function register_enhanced_Kd_temp_tracer(HI, GV, param_file, CS, tr_Reg, restar
   call log_version(param_file, mdl, version, "")
 
   allocate(CS%extra_dT(isd:ied,jsd:jed,nz)) ; CS%extra_dT(:,:,:) = 0.0
-  allocate(CS%Kd_int_tuned(isd:ied,jsd:jed,nz+1)) ; CS%Kd_int_tuned(:,:,:) = 0.0
 
   CS%tr_desc = var_desc(trim("enhanced_Kd_temp"), "degC", &
                      "Enhanced Kd temperature change passive tracer", caller=mdl)
@@ -232,7 +231,7 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
   do k=2,(nz-1) ; do j=js,je ; do i=is,ie
 !    if k=1 then
 !      dTdz = (tv%T(i,j,k+1)-tv%T(i,j,k))/(h_new(i,j,k+1)-h_new(i,j,k))
-!      num = CS%Kd_int_tuned(i,j,K+1)*dTdz
+!      num = tv%Kd_int_tuned(i,j,K+1)*dTdz
 !      denom = h_new(i,j,k+1)-h_new(i,j,k)
 !      CS%extra_dT(i,j,k) = CS%extra_dT(i,j,k) + dt*num/denom
 !    else if k=nz then
@@ -240,7 +239,7 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
 
     dTdz_1 = (tv%T(i,j,k+1)-tv%T(i,j,k))/(h_new(i,j,k+1)-h_new(i,j,k))
     dTdz_2 = (tv%T(i,j,k)-tv%T(i,j,k-1))/(h_new(i,j,k)-h_new(i,j,k-1))
-    num = CS%Kd_int_tuned(i,j,K+1)*dTdz_1 - CS%Kd_int_tuned(i,j,K)*dTdz_2
+    num = tv%Kd_int_tuned(i,j,K+1)*dTdz_1 - tv%Kd_int_tuned(i,j,K)*dTdz_2
     denom = 0.5*((h_new(i,j,k+1)-h_new(i,j,k)) + (h_new(i,j,k)-h_new(i,j,k-1)))
     CS%extra_dT(i,j,k) = CS%extra_dT(i,j,k) + dt*num/denom
   enddo ; enddo ; enddo
@@ -257,7 +256,6 @@ subroutine enhanced_Kd_temp_tracer_end(CS)
 
   if (associated(CS)) then
     if (associated(CS%extra_dT)) deallocate(CS%extra_dT)
-    if (associated(CS%Kd_int_tuned)) deallocate(CS%Kd_int_tuned)
     deallocate(CS)
   endif
 end subroutine enhanced_Kd_temp_tracer_end

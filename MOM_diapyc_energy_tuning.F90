@@ -261,6 +261,8 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
      Kd_lay(:,:,:) = Kd_lay_base(:,:,:)+Kd_lay_added(:,:,:)
      Kd_int(:,:,:) = Kd_int_base(:,:,:)+Kd_int_added(:,:,:)
 
+     tv%Kd_int_tuned(:,:,:) = Kd_int_tuned
+
      energy_Kd(:,:) = 0.0
      
      do j=js,je ; do i=is,ie
