@@ -92,6 +92,7 @@ function register_enhanced_Kd_temp_tracer(HI, GV, param_file, CS, tr_Reg, restar
   call log_version(param_file, mdl, version, "")
 
   allocate(CS%extra_dT(isd:ied,jsd:jed,nz)) ; CS%extra_dT(:,:,:) = 0.0
+  allocate(CS%Kd_int_tuned(isd:ied,jsd:jed,nz+1)) ; CS%Kd_int_tuned(:,:,:) = 0.0
 
   CS%tr_desc = var_desc(trim("enhanced_Kd_temp"), "degC", &
                      "Enhanced Kd temperature change passive tracer", caller=mdl)
@@ -255,7 +256,8 @@ subroutine enhanced_Kd_temp_tracer_end(CS)
   integer :: m
 
   if (associated(CS)) then
-    if (associated(CS%id_encd_Kd_tracer)) deallocate(CS%id_encd_Kd_tracer)
+    if (associated(CS%extra_dT)) deallocate(CS%extra_dT)
+    if (associated(CS%Kd_int_tuned)) deallocate(CS%Kd_int_tuned)
     deallocate(CS)
   endif
 end subroutine enhanced_Kd_temp_tracer_end
