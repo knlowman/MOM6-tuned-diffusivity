@@ -620,17 +620,6 @@ subroutine diabatic_ALE_legacy(u, v, h, tv, Hml, fluxes, visc, ADp, CDp, dt, Tim
   call cpu_clock_end(id_clock_set_diffusivity)
   if (showCallTree) call callTree_waypoint("done with set_diffusivity (diabatic)")
 
-!  if (CS%tune_energy_req) then
-!      call diapyc_energy_tuning_calc(h, dt, tv, G, GV, US, CS%diapyc_en_tun_CSp, T_f, S_f, Kd_int, Kd_int_base, Kd_int_tuned, &
-!        Kd_lay, Kd_lay_base, Kd_lay_tuned)
-!    if (CS%tuning_counter == 1) then
-!      CS%tuning_counter = 12
-!      call diapyc_energy_tuning_calc(h, dt, tv, G, GV, US, CS%diapyc_en_tun_CSp, T_f, S_f, Kd_int, Kd_int_base, Kd_int_tuned)
-!    else
-!      CS%tuning_counter = CS%tuning_counter - 1
-!    endif
-!  endif
-
   if (CS%debug) then
     call MOM_state_chksum("after set_diffusivity ", u, v, h, G, GV, US, haloshift=0)
     call MOM_forcing_chksum("after set_diffusivity ", fluxes, G, US, haloshift=0)
@@ -1871,12 +1860,11 @@ subroutine layered_diabatic(u, v, h, tv, Hml, fluxes, visc, ADp, CDp, dt, Time_e
   if (CS%tune_energy_req) then
     call diapyc_energy_tuning_calc(h, dt, tv, G, GV, US, CS%diapyc_en_tun_CSp, T_f, S_f, Kd_int, Kd_int_base, Kd_int_tuned, &
       Kd_lay, Kd_lay_base, Kd_lay_tuned)
-    !if (CS%tuning_counter == 1) then
-    !  CS%tuning_counter = 12
-    !  call diapyc_energy_tuning_calc(h, dt, tv, G, GV, US, CS%diapyc_en_tun_CSp, T_f, S_f, Kd_int, Kd_int_base, Kd_int_tuned)
-    !else
-    !  CS%tuning_counter = CS%tuning_counter - 1
-    !endif
+    if (associated(tracer_flow_control_CSp)) then
+      if (associated(tracer_flow_control_CSp%enhanced_Kd_temp_tracer_CSp)) then
+        tracer_flow_control_CSp%enhanced_Kd_temp_tracer_CSp%Kd_int_tuned = Kd_int_tuned
+      end if
+    end if
   endif
 
   if (CS%debug) then

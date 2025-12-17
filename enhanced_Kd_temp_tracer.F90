@@ -40,7 +40,8 @@ type, public :: enhanced_Kd_temp_tracer_CS ; private
   type(time_type), pointer :: Time => NULL() !< A pointer to the ocean model's clock.
   type(tracer_registry_type), pointer :: tr_Reg => NULL() !< A pointer to the MOM tracer registry
   real, pointer :: extra_dT(:,:,:) => NULL()   !< The array of diffusive heating tracer used in this
-                                               !! subroutine [C]
+                                               !! subroutine [degC]
+  real, pointer :: Kd_int_tuned(:,:,:) => NULL() !< The added diffusivity [m^2/s]
   logical :: enhanced_Kd_temp_may_reinit = .true. !< Hard coding since this should not matter
 
   integer :: id_encd_Kd_tracer = -1   !< A diagnostic ID
@@ -49,12 +50,12 @@ type, public :: enhanced_Kd_temp_tracer_CS ; private
                                    !! regulate the timing of diagnostic output.
   type(MOM_restart_CS), pointer :: restart_CSp => NULL() !< A pointer to the restart control structure
 
-  type(vardesc) :: tr_desc !< A description and metadata for the pseudo-salt tracer
+  type(vardesc) :: tr_desc !< A description and metadata for the enhanced Kd temperature change tracer
 end type enhanced_Kd_temp_tracer_CS
 
 contains
 
-!> Register the pseudo-salt tracer with MOM6
+!> Register the enhanced Kd temperature change tracer with MOM6
 function register_enhanced_Kd_temp_tracer(HI, GV, param_file, CS, tr_Reg, restart_CS)
   type(hor_index_type),       intent(in) :: HI   !< A horizontal index type structure
   type(verticalGrid_type),    intent(in) :: GV   !< The ocean's vertical grid structure
@@ -109,7 +110,7 @@ function register_enhanced_Kd_temp_tracer(HI, GV, param_file, CS, tr_Reg, restar
 
 end function register_enhanced_Kd_temp_tracer
 
-!> Initialize the pseudo-salt tracer
+!> Initialize the enhanced Kd temperature change tracer
 subroutine initialize_enhanced_Kd_temp_tracer(restart, day, G, GV, h, diag, OBC, CS, &
                                   sponge_CSp, tv)
   logical,                            intent(in) :: restart !< .true. if the fields have already
@@ -154,7 +155,7 @@ subroutine initialize_enhanced_Kd_temp_tracer(restart, day, G, GV, h, diag, OBC,
   call query_vardesc(CS%tr_desc, name=name, caller="initialize_enhanced_Kd_temp_tracer")
   if ((.not.restart) .or. (.not.query_initialized(CS%extra_dT, name, CS%restart_CSp))) then
     do k=1,nz ; do j=jsd,jed ; do i=isd,ied
-      CS%extra_dT(i,j,k) = 0.0 !tv%S(i,j,k)
+      CS%extra_dT(i,j,k) = 0.0
     enddo ; enddo ; enddo
   endif
 
@@ -208,6 +209,7 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
   integer :: secs, days
   integer :: i, j, k, is, ie, js, je, nz, k_max
   real, dimension(SZI_(G),SZJ_(G),SZK_(G)) :: h_work ! Used so that h can be modified
+  real :: dTdz, dTdz1, dTdz2, num, denom
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
@@ -228,9 +230,17 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
   endif
 
   do k=2,(nz-1) ; do j=js,je ; do i=is,ie
+!    if k=1 then
+!      dTdz = (tv%T(i,j,k+1)-tv%T(i,j,k))/(h_new(i,j,k+1)-h_new(i,j,k))
+!      num = CS%Kd_int_tuned(i,j,K+1)*dTdz
+!      denom = h_new(i,j,k+1)-h_new(i,j,k)
+!      CS%extra_dT(i,j,k) = CS%extra_dT(i,j,k) + dt*num/denom
+!    else if k=nz then
+!      dTdz = 
+
     dTdz_1 = (tv%T(i,j,k+1)-tv%T(i,j,k))/(h_new(i,j,k+1)-h_new(i,j,k))
     dTdz_2 = (tv%T(i,j,k)-tv%T(i,j,k-1))/(h_new(i,j,k)-h_new(i,j,k-1))
-    num = tv%Kd_int_tuned(i,j,K+1)*dTdz_1 - tv%Kd_int_tuned(i,j,K)*dTdz_2
+    num = CS%Kd_int_tuned(i,j,K+1)*dTdz_1 - CS%Kd_int_tuned(i,j,K)*dTdz_2
     denom = 0.5*((h_new(i,j,k+1)-h_new(i,j,k)) + (h_new(i,j,k)-h_new(i,j,k-1)))
     CS%extra_dT(i,j,k) = CS%extra_dT(i,j,k) + dt*num/denom
   enddo ; enddo ; enddo
