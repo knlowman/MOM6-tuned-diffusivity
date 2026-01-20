@@ -23,6 +23,8 @@ use MOM_diapyc_energy_req,  only: diapyc_energy_req_init, diapyc_energy_req_end
 use MOM_time_manager,       only : time_type, time_type_to_real, operator(//)
 use time_manager_mod,       only : length_of_year
 
+use, intrinsic :: ieee_arithmetic
+
 implicit none ; private
 
 #include <MOM_memory.h>
@@ -118,6 +120,13 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
   real :: PE_err_lower, PE_err_upper   ! Energy change error associated with Kd_lower and Kd_upper [W].
   integer :: num_iter, max_iter       ! Iteration counter and max number of allowed iterations.
 
+  ! --- SAFETY GUARDS FOR CS%Kd_add ----------------------------
+  real, parameter :: Kd_add_min = 0.0
+  real, parameter :: Kd_add_max = 1.0e2
+  real, parameter :: max_step_factor = 10.0
+
+  real :: Kd_prev
+
   real :: elapsed_years  ! Current year of the simulation.
   
   real, dimension(G%isd:G%ied,G%jsd:G%jed) :: &
@@ -152,8 +161,6 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
   max_iter = 200
 
   elapsed_years = time_type_to_real(CS%Time) / time_type_to_real(length_of_year())
-!  write (output_str, '(a, es12.5)') 'elapsed_years: ', elapsed_years
-!  call MOM_mesg(output_str)
 
   if (CS%ramp_time /= -1.0e9) then
     if (elapsed_years < CS%ramp_time) then
@@ -171,9 +178,6 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
 
   energy_Kd(:,:) = 0.0 ! previously set to 1.88 for debugging
  
-!  write(output_str, '(A,ES12.5)') "FROM TUNING SUBROUTINE, P_ref: ",tv%P_Ref
-!  call MOM_mesg(''//output_str)
-
 !  write (output_str, '(A, ES14.7)') "From tuning subroutine, max val of initial Kd profile", maxval(Kd_int_added)
 !  call MOM_mesg(''//output_str)
 
@@ -206,6 +210,9 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
 
      num_iter = num_iter + 1
 
+     ! Save previous value for safety checks
+     Kd_prev = CS%Kd_add
+
      ! I shouldn't need to add another condition for if Kd_add_scaling greater/less than Kd bounds
      if (num_iter /= 1) then
 
@@ -217,7 +224,6 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
            CS%Kd_add = 0.1*CS%Kd_add
          else
            CS%Kd_add = Kd_upper - PE_err_upper * (Kd_upper - Kd_lower)/(PE_err_upper-PE_err_lower)
-           ! Kd_add_scaling = 0.5*(Kd_lower+Kd_upper)
          endif
 
        else if (energy_error < 0.0) then
@@ -228,11 +234,30 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
            CS%Kd_add = 10.0*CS%Kd_add
          else
            CS%Kd_add = Kd_upper - PE_err_upper * (Kd_upper - Kd_lower)/(PE_err_upper-PE_err_lower)
-           ! Kd_add_scaling = 0.5*(Kd_lower+Kd_upper)
          endif
 
        endif
      endif
+
+     ! NaN / Inf -> revert to previous
+     if (.not. ieee_is_finite(CS%Kd_add)) then
+       CS%Kd_add = Kd_prev
+     endif
+
+     ! Enforce physical bounds
+     CS%Kd_add = min(max(CS%Kd_add, Kd_add_min), Kd_add_max)
+
+     ! If both bounds exist, force iterate to remain bracketed
+     if (Kd_lower > 0.0 .and. Kd_upper > 0.0) then
+       CS%Kd_add = min(max(CS%Kd_add, Kd_lower), Kd_upper)
+     endif
+
+     ! Limit per-iteration jump size
+     if (Kd_prev > 0.0) then
+       if (CS%Kd_add > max_step_factor*Kd_prev) CS%Kd_add = max_step_factor*Kd_prev
+       if (CS%Kd_add < Kd_prev/max_step_factor) CS%Kd_add = Kd_prev/max_step_factor
+     endif
+     ! ----------------------------------------------------------------------
 
 !     write (output_str, '(a, es12.5, a, es12.5, a, es12.5)') 'Kd_lower: ', Kd_lower, '  Kd_upper: ', &
 !         Kd_upper, '  Kd_add_scaling', CS%Kd_add
@@ -285,10 +310,6 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
      tot_energy = global_area_integral(energy_Kd, G, scale=US%RZ3_T3_to_W_m2*US%L_to_Z**2)
      energy_change = tot_energy - base_energy
      energy_error = energy_change - global_target
-
-!     write (output_str, '(a, i3, a, es12.5, a, es12.5, a, es12.5)') 'Num iter: ', num_iter, '  New Kd_add: ', Kd_add_scaling, &
-!             '  Energy change: ', energy_change, '  Energy error: ', energy_error
-!     call MOM_mesg(''//output_str)
 
   enddo
 
