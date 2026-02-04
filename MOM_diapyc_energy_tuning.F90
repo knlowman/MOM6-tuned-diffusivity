@@ -160,7 +160,7 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
   num_iter = 0
   max_iter = 200
 
-  elapsed_years = time_type_to_real(CS%Time) / time_type_to_real(length_of_year())
+  elapsed_years = time_type_to_real(CS%Time - CS%Time_init) / time_type_to_real(length_of_year())
 
   if (CS%ramp_time /= -1.0e9) then
     if (elapsed_years < CS%ramp_time) then
@@ -313,8 +313,8 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
 
   enddo
 
-  write (output_str, '(a, i3, a, es12.5, a, es12.5, a, es12.5)') 'Tot. iter.: ', num_iter, '  Final Kd_add: ', CS%Kd_add, &
-             '  Energy change: ', energy_change, '  Energy error: ', energy_error
+  write (output_str, '(a, i3, a, es12.5, a, es12.5, a, es12.5)') 'Tot. iter.: ', num_iter, ' Elapsed yrs: ', elapsed_years, &
+             '  Final Kd_add: ', CS%Kd_add, '  Energy change: ', energy_change, '  Energy error: ', energy_error
   call MOM_mesg(''//output_str) 
 !  if (showCallTree) call callTree_waypoint("Finished ALL iterations of second do loop of diapyc_tuning_calc()")
 

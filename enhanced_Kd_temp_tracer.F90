@@ -6,7 +6,7 @@ module enhanced_Kd_temp_tracer
 use MOM_debugging,     only : hchksum
 use MOM_diag_mediator, only : post_data, register_diag_field, safe_alloc_ptr
 use MOM_diag_mediator, only : diag_ctrl
-use MOM_error_handler, only : MOM_error, FATAL, WARNING
+use MOM_error_handler, only : MOM_error, FATAL, WARNING, MOM_mesg
 use MOM_file_parser, only : get_param, log_param, log_version, param_file_type
 use MOM_forcing_type, only : forcing
 use MOM_grid, only : ocean_grid_type
@@ -142,7 +142,7 @@ subroutine initialize_enhanced_Kd_temp_tracer(restart, day, G, GV, h, diag, OBC,
   integer :: IsdB, IedB, JsdB, JedB
 
   if (.not.associated(CS)) return
-  !  if (.not.associated(CS%diff)) return ! do I need a line like this for CS%extra_dT
+  if (.not.associated(CS%extra_dT)) return
 
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
@@ -210,7 +210,9 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
   integer :: i, j, k, is, ie, js, je, nz, k_max
   real, dimension(SZI_(G),SZJ_(G),SZK_(G)) :: h_work ! Used so that h can be modified
   real :: dTdz, dTdz_1, dTdz_2, num, denom
-
+  logical :: error_flag
+  character(len=300)  ::  output_str
+  
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
   if (.not.associated(CS)) return
@@ -218,25 +220,41 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
 
   call tracer_vertdiff(h_old, ea, eb, dt, CS%extra_dT, G, GV)
 
+  error_flag = .false.
+
   do k=1,nz ; do j=js,je ; do i=is,ie
     if (k==1) then
-      dTdz = (tv%T(i,j,k+1)-tv%T(i,j,k))/(0.5*(h_new(i,j,k+1)+h_new(i,j,k)))
+      dTdz = (tv%T(i,j,k+1)-tv%T(i,j,k))/(0.5*(max(0.1,h_new(i,j,k+1)+h_new(i,j,k))))
       num = tv%Kd_int_tuned(i,j,K+1)*dTdz - 0.0
-      denom = h_new(i,j,k)
-      CS%extra_dT(i,j,k) = CS%extra_dT(i,j,k) + dt*num/denom
     else if (k==nz) then
-      dTdz = (tv%T(i,j,k)-tv%T(i,j,k-1))/(0.5*(h_new(i,j,k)+h_new(i,j,k-1)))
+      dTdz = (tv%T(i,j,k)-tv%T(i,j,k-1))/(0.5*(max(0.1,h_new(i,j,k)+h_new(i,j,k-1))))
       num = 0.0 - tv%Kd_int_tuned(i,j,K)*dTdz
-      denom = h_new(i,j,k)
-      CS%extra_dT(i,j,k) = CS%extra_dT(i,j,k) + dt*num/denom
     else
-      dTdz_1 = (tv%T(i,j,k+1)-tv%T(i,j,k))/(0.5*(h_new(i,j,k+1)+h_new(i,j,k)))
-      dTdz_2 = (tv%T(i,j,k)-tv%T(i,j,k-1))/(0.5*(h_new(i,j,k)+h_new(i,j,k-1)))
+      dTdz_1 = (tv%T(i,j,k+1)-tv%T(i,j,k))/(0.5*(max(0.1,h_new(i,j,k+1)+h_new(i,j,k))))
+      dTdz_2 = (tv%T(i,j,k)-tv%T(i,j,k-1))/(0.5*(max(0.1,h_new(i,j,k)+h_new(i,j,k-1))))
       num = tv%Kd_int_tuned(i,j,K+1)*dTdz_1 - tv%Kd_int_tuned(i,j,K)*dTdz_2
-      denom = h_new(i,j,k)
-      CS%extra_dT(i,j,k) = CS%extra_dT(i,j,k) + dt*num/denom
     endif
+    denom = max(0.1,h_new(i,j,k))
+    CS%extra_dT(i,j,k) = CS%extra_dT(i,j,k) + dt*num/denom
+
+    if (denom < 0.01) then
+      write (output_str, '(a, es10.3, a, i0)') 'denom: ', denom, 'k = ', k
+      call MOM_mesg(trim(output_str))
+    endif
+    if ((dt*num/denom) > 1E-4) then
+      write (output_str, '(a, es10.3, a, es10.3, a, es10.3, a, i0)') 'dt*num/denom: ', dt*num/denom, &
+        'num: ', num, 'denom: ', denom, 'k = ', k
+      call MOM_mesg(trim(output_str))
+!      error_flag = .true.
+    endif
+
   enddo ; enddo ; enddo
+!  if (denom < 0.01) then
+!    write (output_str, '(a, es10.3)'), 'denom: ', denom
+!    call MOM_mesg(trim(output_str))
+!  endif
+!  if (error_flag) call MOM_error(FATAL, "enhanced_Kd_temp_tracer: "// &
+!          "dt*num/denom > 0.01.")
 
   if (CS%id_encd_Kd_tracer>0) call post_data(CS%id_encd_Kd_tracer, CS%extra_dT, CS%diag)
 
