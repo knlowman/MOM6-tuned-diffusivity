@@ -163,9 +163,9 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
   max_iter = 200
 
 !  elapsed_years = time_type_to_real(CS%Time - CS%Time_init) / time_type_to_real(length_of_year())
-  elapsed_years = (time_type_to_real(CS%Time) - CS%year_offset ) / time_type_to_real(length_of_year())
+  elapsed_years = time_type_to_real(CS%Time)/time_type_to_real(length_of_year()) - CS%year_offset
 
-  if (CS%ramp_time /= -1.0e9) then
+  if (CS%ramp_time /= 0.0) then
     if (elapsed_years < CS%ramp_time) then
       global_target = CS%energy_target * (elapsed_years/CS%ramp_time)
     else
@@ -550,10 +550,10 @@ subroutine diapyc_energy_tuning_init(Time, G, GV, US, param_file, diag, CS)
                  "Target change in power associated with diapycnal mixing.", units="W")
   call get_param(param_file, mdl, "TUNING_RAMP_YRS", CS%ramp_time, &
                  "Time period (in years) over which to linearly ramp up additional diapycnal &
-                 mixing energy input.", units="years", default=-1.0e9)
+                 mixing energy input.", units="years", default=0.0)
   call get_param(param_file, mdl, "TUNING_OFFSET_YRS", CS%year_offset, &
                  "Ensemble member start time (in years) to use for calculating elapased time.", &
-                 units="years", default=-1.0e9)
+                 units="years", default=0.0)
 
   if (any( CS%lat_range /= -1.0e9 ) .and. (.not.range_OK(CS%lat_range)) ) then
     write(mesg, '(4(1pe15.6))') CS%lat_range(1:4)
