@@ -44,11 +44,13 @@ type, public :: diapyc_energy_tuning_CS ; private
                                !! regulate the timing of diagnostic output.
 
   type(time_type), pointer :: Time => NULL() !< Pointer to model time (needed for ramping up added mixing energy)
+!  type(time_type), pointer :: Time_init => NULL() !< Pointer to model initialization time (needed for ramping up added mixing energy)
   
   real :: Kd_add        !< The scale of diffusivity that was added on the previous timestep [Z2 T-1 ~> m2 s-1].
   real :: energy_target !< Target change in global power requirements for diapycnal mixing [W].
 
   real :: ramp_time !< Time period over which to linearly ramp up energy input [years].
+  real :: year_offset !< Start year of ensemble member, to subtract when calculating elapsed time.
   
   character(len=20) :: Kd_prof  !< The name of the density-dependent diffusivity profile.
 
@@ -160,7 +162,8 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
   num_iter = 0
   max_iter = 200
 
-  elapsed_years = time_type_to_real(CS%Time - CS%Time_init) / time_type_to_real(length_of_year())
+!  elapsed_years = time_type_to_real(CS%Time - CS%Time_init) / time_type_to_real(length_of_year())
+  elapsed_years = (time_type_to_real(CS%Time) - CS%year_offset ) / time_type_to_real(length_of_year())
 
   if (CS%ramp_time /= -1.0e9) then
     if (elapsed_years < CS%ramp_time) then
@@ -313,7 +316,7 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
 
   enddo
 
-  write (output_str, '(a, i3, a, es12.5, a, es12.5, a, es12.5)') 'Tot. iter.: ', num_iter, ' Elapsed yrs: ', elapsed_years, &
+  write (output_str, '(a, i3, a, f4.1, a, es10.5, a, es10.5, a, es10.5)') 'Tot. iter.: ', num_iter, ' Elapsed yrs: ', elapsed_years, &
              '  Final Kd_add: ', CS%Kd_add, '  Energy change: ', energy_change, '  Energy error: ', energy_error
   call MOM_mesg(''//output_str) 
 !  if (showCallTree) call callTree_waypoint("Finished ALL iterations of second do loop of diapyc_tuning_calc()")
@@ -489,6 +492,7 @@ end function val_weights
 !> Initialize parameters and allocate memory associated with the diapycnal energy requirement module.
 subroutine diapyc_energy_tuning_init(Time, G, GV, US, param_file, diag, CS)
   type(time_type), target,    intent(in)    :: Time        !< model time
+!  type(time_type), target,    intent(in)    :: Time_init   !< model start time, added Feb 5, 2026
   type(ocean_grid_type),      intent(in)    :: G           !< model grid structure
   type(verticalGrid_type),    intent(in)    :: GV          !< ocean vertical grid structure
   type(unit_scale_type),      intent(in)    :: US          !< A dimensional unit scaling type
@@ -513,6 +517,7 @@ subroutine diapyc_energy_tuning_init(Time, G, GV, US, param_file, diag, CS)
   CS%initialized = .true.
   CS%diag => diag
   CS%Time => Time !< added May 28
+!  CS%Time_init => Time_init !< added Feb 5, 2026
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mdl, version, "The following parameters are used for energy-tuning the added diffusivity.")
@@ -546,6 +551,9 @@ subroutine diapyc_energy_tuning_init(Time, G, GV, US, param_file, diag, CS)
   call get_param(param_file, mdl, "TUNING_RAMP_YRS", CS%ramp_time, &
                  "Time period (in years) over which to linearly ramp up additional diapycnal &
                  mixing energy input.", units="years", default=-1.0e9)
+  call get_param(param_file, mdl, "TUNING_OFFSET_YRS", CS%year_offset, &
+                 "Ensemble member start time (in years) to use for calculating elapased time.", &
+                 units="years", default=-1.0e9)
 
   if (any( CS%lat_range /= -1.0e9 ) .and. (.not.range_OK(CS%lat_range)) ) then
     write(mesg, '(4(1pe15.6))') CS%lat_range(1:4)
