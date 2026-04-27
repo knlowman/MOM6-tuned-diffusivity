@@ -316,7 +316,7 @@ subroutine diapyc_energy_tuning_calc(h_3d, dt, tv, G, GV, US, CS, T_f, S_f, Kd_i
 
   enddo
 
-  write (output_str, '(a, i3, a, f4.1, a, es10.5, a, es10.5, a, es10.5)') 'Tot. iter.: ', num_iter, ' Elapsed yrs: ', elapsed_years, &
+  write (output_str, '(a, i3, a, f0.3, a, es12.4, a, es12.4, a, es12.4)') 'Tot. iter.: ', num_iter, ' Elapsed yrs: ', elapsed_years, &
              '  Final Kd_add: ', CS%Kd_add, '  Energy change: ', energy_change, '  Energy error: ', energy_error
   call MOM_mesg(''//output_str) 
 !  if (showCallTree) call callTree_waypoint("Finished ALL iterations of second do loop of diapyc_tuning_calc()")
