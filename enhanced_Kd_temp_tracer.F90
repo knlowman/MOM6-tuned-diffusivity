@@ -213,27 +213,40 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
   real :: denom_floor
   logical :: error_flag
   character(len=300)  ::  output_str
+
+  real, dimension(SZI_(G),SZJ_(G),SZK_(G)) :: T_f, S_f
+  ! Temperature and salinity [degC] and [ppt] with properties in massless layers
+  ! filled vertically by diffusion or the properties after full convective adjustment.
+
+  real      :: kappa_dt_fill ! diffusivity times a timestep used to fill massless layers [Z2 ~> m2]
+  real      :: tracer_sfc_flux ! surface flux of tracer
   
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
   if (.not.associated(CS)) return
   if (.not.associated(CS%extra_dT)) return
 
-  call tracer_vertdiff(h_old, ea, eb, dt, CS%extra_dT, G, GV)
-
   error_flag = .false.
   denom_floor = 1.0
 
+  ! revisit this value later, perhaps with option to specify
+  kappa_dt_fill = US%m_to_Z**2 * 1.e-3 * 7200
+
+  tracer_sfc_flux = -50.0/3992
+
+  ! call vert_fill_TS here and replaced calls to tv%T below with the new T field
+  call vert_fill_TS(h_new, tv%T, tv%S, kappa_dt_fill, T_f, S_f, G, GV, larger_h_denom=.true.)
+
   do k=1,nz ; do j=js,je ; do i=is,ie
     if (k==1) then
-      dTdz = (tv%T(i,j,k+1)-tv%T(i,j,k))/(0.5*(max(denom_floor,h_new(i,j,k+1)+h_new(i,j,k))))
+      dTdz = (T_f(i,j,k+1)-T_f(i,j,k))/(0.5*(max(denom_floor,h_new(i,j,k+1)+h_new(i,j,k))))
       num = tv%Kd_int_tuned(i,j,K+1)*dTdz - 0.0
     else if (k==nz) then
-      dTdz = (tv%T(i,j,k)-tv%T(i,j,k-1))/(0.5*(max(denom_floor,h_new(i,j,k)+h_new(i,j,k-1))))
+      dTdz = (T_f(i,j,k)-T_f(i,j,k-1))/(0.5*(max(denom_floor,h_new(i,j,k)+h_new(i,j,k-1))))
       num = 0.0 - tv%Kd_int_tuned(i,j,K)*dTdz
     else
-      dTdz_1 = (tv%T(i,j,k+1)-tv%T(i,j,k))/(0.5*(max(denom_floor,h_new(i,j,k+1)+h_new(i,j,k))))
-      dTdz_2 = (tv%T(i,j,k)-tv%T(i,j,k-1))/(0.5*(max(denom_floor,h_new(i,j,k)+h_new(i,j,k-1))))
+      dTdz_1 = (T_f(i,j,k+1)-T_f(i,j,k))/(0.5*(max(denom_floor,h_new(i,j,k+1)+h_new(i,j,k))))
+      dTdz_2 = (T_f(i,j,k)-T_f(i,j,k-1))/(0.5*(max(denom_floor,h_new(i,j,k)+h_new(i,j,k-1))))
       num = tv%Kd_int_tuned(i,j,K+1)*dTdz_1 - tv%Kd_int_tuned(i,j,K)*dTdz_2
     endif
     denom = max(denom_floor,h_new(i,j,k))
@@ -251,6 +264,9 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
     endif
 
   enddo ; enddo ; enddo
+
+  call tracer_vertdiff(h_old, ea, eb, dt, CS%extra_dT, G, GV, sfc_flux=tracer_sfc_flux, convert_flux_in=.true.)
+
 !  if (denom < 0.01) then
 !    write (output_str, '(a, es10.3)'), 'denom: ', denom
 !    call MOM_mesg(trim(output_str))
