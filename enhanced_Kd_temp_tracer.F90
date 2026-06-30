@@ -210,6 +210,7 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
   integer :: i, j, k, is, ie, js, je, nz, k_max
   real, dimension(SZI_(G),SZJ_(G),SZK_(G)) :: h_work ! Used so that h can be modified
   real :: dTdz, dTdz_1, dTdz_2, num, denom
+  real :: denom_floor
   logical :: error_flag
   character(len=300)  ::  output_str
   
@@ -221,20 +222,21 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
   call tracer_vertdiff(h_old, ea, eb, dt, CS%extra_dT, G, GV)
 
   error_flag = .false.
+  denom_floor = 1.0
 
   do k=1,nz ; do j=js,je ; do i=is,ie
     if (k==1) then
-      dTdz = (tv%T(i,j,k+1)-tv%T(i,j,k))/(0.5*(max(0.1,h_new(i,j,k+1)+h_new(i,j,k))))
+      dTdz = (tv%T(i,j,k+1)-tv%T(i,j,k))/(0.5*(max(denom_floor,h_new(i,j,k+1)+h_new(i,j,k))))
       num = tv%Kd_int_tuned(i,j,K+1)*dTdz - 0.0
     else if (k==nz) then
-      dTdz = (tv%T(i,j,k)-tv%T(i,j,k-1))/(0.5*(max(0.1,h_new(i,j,k)+h_new(i,j,k-1))))
+      dTdz = (tv%T(i,j,k)-tv%T(i,j,k-1))/(0.5*(max(denom_floor,h_new(i,j,k)+h_new(i,j,k-1))))
       num = 0.0 - tv%Kd_int_tuned(i,j,K)*dTdz
     else
-      dTdz_1 = (tv%T(i,j,k+1)-tv%T(i,j,k))/(0.5*(max(0.1,h_new(i,j,k+1)+h_new(i,j,k))))
-      dTdz_2 = (tv%T(i,j,k)-tv%T(i,j,k-1))/(0.5*(max(0.1,h_new(i,j,k)+h_new(i,j,k-1))))
+      dTdz_1 = (tv%T(i,j,k+1)-tv%T(i,j,k))/(0.5*(max(denom_floor,h_new(i,j,k+1)+h_new(i,j,k))))
+      dTdz_2 = (tv%T(i,j,k)-tv%T(i,j,k-1))/(0.5*(max(denom_floor,h_new(i,j,k)+h_new(i,j,k-1))))
       num = tv%Kd_int_tuned(i,j,K+1)*dTdz_1 - tv%Kd_int_tuned(i,j,K)*dTdz_2
     endif
-    denom = max(0.1,h_new(i,j,k))
+    denom = max(denom_floor,h_new(i,j,k))
     CS%extra_dT(i,j,k) = CS%extra_dT(i,j,k) + dt*num/denom
 
     if (denom < 0.01) then
