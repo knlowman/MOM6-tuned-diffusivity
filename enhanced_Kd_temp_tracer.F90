@@ -12,6 +12,7 @@ use MOM_forcing_type, only : forcing
 use MOM_grid, only : ocean_grid_type
 use MOM_hor_index, only : hor_index_type
 use MOM_io, only : file_exists, read_data, slasher, vardesc, var_desc, query_vardesc
+use MOM_isopycnal_slopes, only : vert_fill_TS
 use MOM_open_boundary, only : ocean_OBC_type
 use MOM_restart, only : query_initialized, MOM_restart_CS
 use MOM_sponge, only : set_up_sponge_field, sponge_CS
@@ -219,7 +220,7 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
   ! filled vertically by diffusion or the properties after full convective adjustment.
 
   real      :: kappa_dt_fill ! diffusivity times a timestep used to fill massless layers [Z2 ~> m2]
-  real      :: tracer_sfc_flux ! surface flux of tracer
+  real, dimension(SZI_(G),SZJ_(G)) :: tracer_sfc_flux ! surface flux of tracer
   
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
@@ -232,9 +233,8 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
   ! revisit this value later, perhaps with option to specify
   kappa_dt_fill = US%m_to_Z**2 * 1.e-3 * 7200
 
-  tracer_sfc_flux = -50.0/3992
+  tracer_sfc_flux(:,:) = -50.0/3992
 
-  ! call vert_fill_TS here and replaced calls to tv%T below with the new T field
   call vert_fill_TS(h_new, tv%T, tv%S, kappa_dt_fill, T_f, S_f, G, GV, larger_h_denom=.true.)
 
   do k=1,nz ; do j=js,je ; do i=is,ie
