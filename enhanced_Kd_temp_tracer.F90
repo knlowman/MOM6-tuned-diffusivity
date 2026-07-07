@@ -221,6 +221,7 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
 
   real      :: kappa_dt_fill ! diffusivity times a timestep used to fill massless layers [Z2 ~> m2]
   real, dimension(SZI_(G),SZJ_(G)) :: tracer_sfc_flux ! surface flux of tracer
+  real :: lambda_restore
   
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
@@ -233,11 +234,12 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
   ! revisit this value later, perhaps with option to specify
   kappa_dt_fill = US%m_to_Z**2 * 1.e-3 * 7200
 
-  tracer_sfc_flux(:,:) = -50.0/3992
+  lambda_restore = 50.0  ! W m-2 K-1, example value
 
   call vert_fill_TS(h_new, tv%T, tv%S, kappa_dt_fill, T_f, S_f, G, GV, larger_h_denom=.true.)
 
   do k=1,nz ; do j=js,je ; do i=is,ie
+
     if (k==1) then
       dTdz = (T_f(i,j,k+1)-T_f(i,j,k))/(0.5*(max(denom_floor,h_new(i,j,k+1)+h_new(i,j,k))))
       num = tv%Kd_int_tuned(i,j,K+1)*dTdz - 0.0
@@ -249,14 +251,15 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
       dTdz_2 = (T_f(i,j,k)-T_f(i,j,k-1))/(0.5*(max(denom_floor,h_new(i,j,k)+h_new(i,j,k-1))))
       num = tv%Kd_int_tuned(i,j,K+1)*dTdz_1 - tv%Kd_int_tuned(i,j,K)*dTdz_2
     endif
+
     denom = max(denom_floor,h_new(i,j,k))
     CS%extra_dT(i,j,k) = CS%extra_dT(i,j,k) + dt*num/denom
 
-    if (denom < 0.01) then
+    if (abs(denom) < 0.01) then
       write (output_str, '(a, es10.3, a, i0)') 'denom: ', denom, 'k = ', k
       call MOM_mesg(trim(output_str))
     endif
-    if ((dt*num/denom) > 1E-4) then
+    if (abs(dt*num/denom) > 1E-4) then
       write (output_str, '(a, es10.3, a, es10.3, a, es10.3, a, i0)') 'dt*num/denom: ', dt*num/denom, &
         'num: ', num, 'denom: ', denom, 'k = ', k
       call MOM_mesg(trim(output_str))
@@ -265,13 +268,17 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
 
   enddo ; enddo ; enddo
 
+  do j=js,je ; do i=is,ie
+    tracer_sfc_flux(i,j) = -lambda_restore * CS%extra_dT(i,j,1) / tv%C_p
+  enddo ; enddo
+
   call tracer_vertdiff(h_old, ea, eb, dt, CS%extra_dT, G, GV, sfc_flux=tracer_sfc_flux, convert_flux_in=.true.)
 
 !  if (denom < 0.01) then
 !    write (output_str, '(a, es10.3)'), 'denom: ', denom
 !    call MOM_mesg(trim(output_str))
 !  endif
-!  if (error_flag) call MOM_error(FATAL, "enhanced_Kd_temp_tracer: "// &
+!  if (error_flag) call MOM_error(FATAL, "enhanced_Kd_temp_tracer: "// 
 !          "dt*num/denom > 0.01.")
 
   if (CS%id_encd_Kd_tracer>0) call post_data(CS%id_encd_Kd_tracer, CS%extra_dT, CS%diag)
