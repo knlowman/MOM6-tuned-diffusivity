@@ -43,6 +43,8 @@ type, public :: enhanced_Kd_temp_tracer_CS ; private
   real, pointer :: extra_dT(:,:,:) => NULL()   !< The array of diffusive heating tracer used in this
                                                !! subroutine [degC]
   real, pointer :: Kd_int_tuned(:,:,:) => NULL() !< The added diffusivity [m^2/s]
+  real :: lambda_restore !< Surface restoring coefficient [W m-2 K-1]
+
   logical :: enhanced_Kd_temp_may_reinit = .true. !< Hard coding since this should not matter
 
   integer :: id_encd_Kd_tracer = -1   !< A diagnostic ID
@@ -91,6 +93,10 @@ function register_enhanced_Kd_temp_tracer(HI, GV, param_file, CS, tr_Reg, restar
 
   ! Read all relevant parameters and write them to the model log.
   call log_version(param_file, mdl, version, "")
+
+  call get_param(param_file, mdl, "LAMBDA_RESTORE", CS%lambda_restore, &
+     "Surface restoring coefficient for enhanced_Kd_temp tracer", &
+     units="W m-2 K-1", default=50.0)
 
   allocate(CS%extra_dT(isd:ied,jsd:jed,nz)) ; CS%extra_dT(:,:,:) = 0.0
 
@@ -221,7 +227,6 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
 
   real      :: kappa_dt_fill ! diffusivity times a timestep used to fill massless layers [Z2 ~> m2]
   real, dimension(SZI_(G),SZJ_(G)) :: tracer_sfc_flux ! surface flux of tracer
-  real :: lambda_restore
   
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec ; nz = GV%ke
 
@@ -229,12 +234,9 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
   if (.not.associated(CS%extra_dT)) return
 
   error_flag = .false.
-  denom_floor = 1.0
+  denom_floor = 0.01
 
-  ! revisit this value later, perhaps with option to specify
-  kappa_dt_fill = US%m_to_Z**2 * 1.e-3 * 7200
-
-  lambda_restore = 50.0  ! W m-2 K-1, example value
+  kappa_dt_fill = US%m_to_Z**2 * 1.e-3 * dt ! same as used for 2018 answers in MOM_set_diffusivity
 
   call vert_fill_TS(h_new, tv%T, tv%S, kappa_dt_fill, T_f, S_f, G, GV, larger_h_denom=.true.)
 
@@ -269,7 +271,7 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
   enddo ; enddo ; enddo
 
   do j=js,je ; do i=is,ie
-    tracer_sfc_flux(i,j) = -lambda_restore * CS%extra_dT(i,j,1) / tv%C_p
+    tracer_sfc_flux(i,j) = -CS%lambda_restore * CS%extra_dT(i,j,1) / tv%C_p
   enddo ; enddo
 
   call tracer_vertdiff(h_old, ea, eb, dt, CS%extra_dT, G, GV, sfc_flux=tracer_sfc_flux, convert_flux_in=.true.)
