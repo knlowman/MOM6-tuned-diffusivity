@@ -236,31 +236,32 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
   error_flag = .false.
   denom_floor = 0.01
 
-  kappa_dt_fill = US%m_to_Z**2 * 1.e-3 * dt ! same as used for 2018 answers in MOM_set_diffusivity
+  ! originally used 1.e-3 * dt
+  kappa_dt_fill = US%m_to_Z**2 * 1.e-4 * dt ! same as used for 2018 answers in MOM_set_diffusivity
 
   call vert_fill_TS(h_new, tv%T, tv%S, kappa_dt_fill, T_f, S_f, G, GV, larger_h_denom=.true.)
 
   do k=1,nz ; do j=js,je ; do i=is,ie
 
     if (k==1) then
-      dTdz = (T_f(i,j,k+1)-T_f(i,j,k))/(0.5*(max(denom_floor,h_new(i,j,k+1)+h_new(i,j,k))))
+      dTdz = (T_f(i,j,k+1)-T_f(i,j,k))/(max(denom_floor,0.5*(h_new(i,j,k+1)+h_new(i,j,k))))
       num = tv%Kd_int_tuned(i,j,K+1)*dTdz - 0.0
     else if (k==nz) then
-      dTdz = (T_f(i,j,k)-T_f(i,j,k-1))/(0.5*(max(denom_floor,h_new(i,j,k)+h_new(i,j,k-1))))
+      dTdz = (T_f(i,j,k)-T_f(i,j,k-1))/(max(denom_floor,0.5*(h_new(i,j,k)+h_new(i,j,k-1))))
       num = 0.0 - tv%Kd_int_tuned(i,j,K)*dTdz
     else
-      dTdz_1 = (T_f(i,j,k+1)-T_f(i,j,k))/(0.5*(max(denom_floor,h_new(i,j,k+1)+h_new(i,j,k))))
-      dTdz_2 = (T_f(i,j,k)-T_f(i,j,k-1))/(0.5*(max(denom_floor,h_new(i,j,k)+h_new(i,j,k-1))))
+      dTdz_1 = (T_f(i,j,k+1)-T_f(i,j,k))/(max(denom_floor,0.5*(h_new(i,j,k+1)+h_new(i,j,k))))
+      dTdz_2 = (T_f(i,j,k)-T_f(i,j,k-1))/(max(denom_floor,0.5*(h_new(i,j,k)+h_new(i,j,k-1))))
       num = tv%Kd_int_tuned(i,j,K+1)*dTdz_1 - tv%Kd_int_tuned(i,j,K)*dTdz_2
     endif
 
     denom = max(denom_floor,h_new(i,j,k))
     CS%extra_dT(i,j,k) = CS%extra_dT(i,j,k) + dt*num/denom
 
-    if (abs(denom) < 0.01) then
-      write (output_str, '(a, es10.3, a, i0)') 'denom: ', denom, 'k = ', k
-      call MOM_mesg(trim(output_str))
-    endif
+!    if (abs(denom) < 0.01) then
+!      write (output_str, '(a, es10.3, a, i0)') 'denom: ', denom, 'k = ', k
+!      call MOM_mesg(trim(output_str))
+!    endif
     if (abs(dt*num/denom) > 1E-4) then
       write (output_str, '(a, es10.3, a, es10.3, a, es10.3, a, i0)') 'dt*num/denom: ', dt*num/denom, &
         'num: ', num, 'denom: ', denom, 'k = ', k
