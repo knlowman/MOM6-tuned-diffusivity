@@ -237,7 +237,7 @@ subroutine enhanced_Kd_temp_tracer_column_physics(h_old, h_new, ea, eb, fluxes, 
   denom_floor = 0.01
 
   ! originally used 1.e-3 * dt
-  kappa_dt_fill = US%m_to_Z**2 * 1.e-4 * dt ! same as used for 2018 answers in MOM_set_diffusivity
+  kappa_dt_fill = US%m_to_Z**2 * 1.e-4 * dt ! smaller than value used for 2018 answers in MOM_set_diffusivity
 
   call vert_fill_TS(h_new, tv%T, tv%S, kappa_dt_fill, T_f, S_f, G, GV, larger_h_denom=.true.)
 
